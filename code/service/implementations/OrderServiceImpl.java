@@ -16,6 +16,8 @@ import core.models.*;
 
 public class OrderServiceImpl implements OrderService {
 
+	private final double DEFAULT_DELIVERY_FEE = 199.99;
+	
 	private DeliveryRepository deliveryRepository;
 	private PaymentRepository paymentRepository;
 	private RestaurantRepository restaurantRepository;
@@ -78,7 +80,7 @@ public class OrderServiceImpl implements OrderService {
 		}
 
 		// Adding delivery fee
-		fullOrderPrice = fullOrderPrice.add(new BigDecimal(199.99));
+		fullOrderPrice = fullOrderPrice.add(new BigDecimal(DEFAULT_DELIVERY_FEE));
 
 		if (orderDetails.getPaymentDetails().getPaymentType() == PaymentType.CREDIT_CARD) {
 			authorizePaymentMethod(orderDetails, fullOrderPrice);
@@ -106,7 +108,7 @@ public class OrderServiceImpl implements OrderService {
 			var orderReportItem = orderItem.getCount() + " x, " + orderItem.getName() + " - " + fullPrice + " din\n";
 			reportStringBuilder.append(orderReportItem);
 		}
-		reportStringBuilder.append("Delivery price: 199.99M");
+		reportStringBuilder.append("Delivery price: " + DEFAULT_DELIVERY_FEE);
 
 		Date orderAcceptedOn = new Date();
 		
