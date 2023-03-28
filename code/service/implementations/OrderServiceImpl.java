@@ -16,11 +16,18 @@ import core.models.*;
 
 public class OrderServiceImpl implements OrderService {
 
-	private final double DEFAULT_DELIVERY_FEE = 199.99;
-    private DeliveryRepository deliveryRepository;
-    private PaymentRepository paymentRepository;
-    private RestaurantRepository restaurantRepository;
-    private OrderRepository orderRepository;
+	private DeliveryRepository deliveryRepository;
+	private PaymentRepository paymentRepository;
+	private RestaurantRepository restaurantRepository;
+	private OrderRepository orderRepository;
+
+	private void authorizePaymentMethod(Order orderDetails, BigDecimal fullOrderPrice)
+			throws CardAuthorizationException {
+		if (!paymentRepository
+				.authoriseCreditCard(orderDetails.getPaymentDetails().toCreditCardPaymentDetails(fullOrderPrice))) {
+			throw new CardAuthorizationException();
+		}
+	}
 	
 	public OrderServiceImpl(DeliveryRepository deliveryRepository, PaymentRepository paymentRepository,
 			RestaurantRepository restaurantRepository, OrderRepository orderRepository) {
@@ -30,85 +37,79 @@ public class OrderServiceImpl implements OrderService {
 		this.orderRepository = orderRepository;
 	}
 
+	private void validateOrderItems(OrderItem orderItem) throws InvalidOrderDetailsException {
+		if (orderItem == null || orderItem.getCount() <= 0) {
+			throw new InvalidOrderDetailsException("Order item count must be higher than 0");
+		}
+	}
+
 	@Override
-	public AcceptedOrderDetails order(Order orderDetails) throws InvalidOrderDetailsException, CardAuthorizationException {
-		if (orderDetails != null)
-        {
-            if (orderDetails.getDeliveryDetails() != null)
-            {
-                if (orderDetails.getPaymentDetails() != null && (orderDetails.getPaymentDetails().getPaymentType() != PaymentType.CREDIT_CARD || (orderDetails.getPaymentDetails().getCardNumber() != null && !orderDetails.getPaymentDetails().getCardNumber().equals(""))))
-                {
-                    if (orderDetails.getOrderItems() != null && orderDetails.getOrderItems().size() != 0)
-                    {
-                        for (OrderItem orderItem : orderDetails.getOrderItems())
-                        {
-                            if (orderItem == null || orderItem.getCount() <= 0)
-                            {
-                                throw new InvalidOrderDetailsException("Order item count must be higher than 0");
-                            }
-                        }
+	public AcceptedOrderDetails order(Order orderDetails)
+			throws InvalidOrderDetailsException, CardAuthorizationException {
+		
+		if (orderDetails == null) {
+			throw new InvalidOrderDetailsException("Order details object cannot be null");
+		}
+		
+		if (orderDetails.getDeliveryDetails() == null) {
+			throw new InvalidOrderDetailsException("Delivery details object cannot be null");
+		}
 
-                        var fullOrderPrice = new BigDecimal(0);
-                        for (OrderItem orderItem : orderDetails.getOrderItems())
-                        {
-                        	BigDecimal orderItemPrice = orderItem.getPrice().multiply(new BigDecimal(orderItem.getCount()));
-                            
-                            fullOrderPrice = fullOrderPrice.add(orderItemPrice);
-                        }
+		if (orderDetails.getPaymentDetails() == null
+				|| (orderDetails.getPaymentDetails().getPaymentType() == PaymentType.CREDIT_CARD
+						&& (orderDetails.getPaymentDetails().getCardNumber() == null
+								|| orderDetails.getPaymentDetails().getCardNumber().equals("")))) {
+			throw new InvalidOrderDetailsException("Payment details are not valid");
+		}
+		
+		if (orderDetails.getOrderItems() == null || orderDetails.getOrderItems().size() == 0) {
+			throw new InvalidOrderDetailsException("Order items must be defined");
+		}
+		
+		for (OrderItem orderItem : orderDetails.getOrderItems()) {
+			validateOrderItems(orderItem);
+		}
 
-                        //Adding delivery fee
-                        fullOrderPrice = fullOrderPrice.add(new BigDecimal(DEFAULT_DELIVERY_FEE));
+		var fullOrderPrice = new BigDecimal(0);
+		for (OrderItem orderItem : orderDetails.getOrderItems()) {
+			BigDecimal orderItemPrice = orderItem.getPrice().multiply(new BigDecimal(orderItem.getCount()));
 
-                        if (orderDetails.getPaymentDetails().getPaymentType() == PaymentType.CREDIT_CARD)
-                        {
-                            if (!paymentRepository.authoriseCreditCard(orderDetails.getPaymentDetails().toCreditCardPaymentDetails(fullOrderPrice)))
-                            {
-                                throw new CardAuthorizationException();
-                            }
-                        }
+			fullOrderPrice = fullOrderPrice.add(orderItemPrice);
+		}
 
-                        AcceptedKitchenResponse kitchenResponse = restaurantRepository.createOrder(orderDetails);
-                        AcceptedDeliveryResponse deliveryServiceResponse = deliveryRepository.createDelivery(orderDetails.getDeliveryDetails());
-                       
-                        if( orderDetails.getPaymentDetails().getPaymentType() == PaymentType.CREDIT_CARD ) {
-                        	paymentRepository.executePayment(orderDetails.getPaymentDetails().toCreditCardPaymentDetails(fullOrderPrice));
-                        }
-                        UUID orderId = orderRepository.createOrder(orderDetails);
-                        
-                        int estimatedDeliveryTimeInMinutes = kitchenResponse.getEstimatedPreparationTimeInMinutes() + deliveryServiceResponse.getEstimatedDeliveryTimeInMinutes();   
-                        
-                        Date orderExpectedOn = new Date(Calendar.getInstance().getTimeInMillis() + (estimatedDeliveryTimeInMinutes * 60 * 1000));
-                        //report string builder
-                        var reportStringBuilder = new StringBuilder("Order summary: \n");
-                        for (var orderItem : orderDetails.getOrderItems())
-                        {
-                        	var fullPrice = orderItem.getCount() * orderItem.getPrice().doubleValue();
-                            var orderReportItem = orderItem.getCount() + " x, " + orderItem.getName() + " - " +fullPrice + " din\n";
-                            reportStringBuilder.append(orderReportItem);
-                        }
-                        reportStringBuilder.append("Delivery price:" + DEFAULT_DELIVERY_FEE);
+		// Adding delivery fee
+		fullOrderPrice = fullOrderPrice.add(new BigDecimal(199.99));
 
-                        Date orderAcceptedOn = new Date();
-                        return new AcceptedOrderDetails(orderId, orderAcceptedOn, orderExpectedOn, reportStringBuilder.toString());
-                    }
-                    else
-                    {
-                        throw new InvalidOrderDetailsException("Order items must be defined");
-                    }
-                }
-                else
-                {
-                    throw new InvalidOrderDetailsException("Payment details are not valid");
-                }
-            }
-            else
-            {
-                throw new InvalidOrderDetailsException("Delivery details object cannot be null");
-            }
-        }
-        else
-        {
-            throw new InvalidOrderDetailsException("Order details object cannot be null");
-        }
-    }
+		if (orderDetails.getPaymentDetails().getPaymentType() == PaymentType.CREDIT_CARD) {
+			authorizePaymentMethod(orderDetails, fullOrderPrice);
+		}
+
+		AcceptedKitchenResponse kitchenResponse = restaurantRepository.createOrder(orderDetails);
+		AcceptedDeliveryResponse deliveryServiceResponse = deliveryRepository
+				.createDelivery(orderDetails.getDeliveryDetails());
+
+		if (orderDetails.getPaymentDetails().getPaymentType() == PaymentType.CREDIT_CARD) {
+			paymentRepository
+					.executePayment(orderDetails.getPaymentDetails().toCreditCardPaymentDetails(fullOrderPrice));
+		}
+		UUID orderId = orderRepository.createOrder(orderDetails);
+
+		int estimatedDeliveryTimeInMinutes = kitchenResponse.getEstimatedPreparationTimeInMinutes()
+				+ deliveryServiceResponse.getEstimatedDeliveryTimeInMinutes();
+
+		Date orderExpectedOn = new Date(
+				Calendar.getInstance().getTimeInMillis() + (estimatedDeliveryTimeInMinutes * 60 * 1000));
+		// report string builder
+		var reportStringBuilder = new StringBuilder("Order summary: \n");
+		for (var orderItem : orderDetails.getOrderItems()) {
+			var fullPrice = orderItem.getCount() * orderItem.getPrice().doubleValue();
+			var orderReportItem = orderItem.getCount() + " x, " + orderItem.getName() + " - " + fullPrice + " din\n";
+			reportStringBuilder.append(orderReportItem);
+		}
+		reportStringBuilder.append("Delivery price: 199.99M");
+
+		Date orderAcceptedOn = new Date();
+		
+		return new AcceptedOrderDetails(orderId, orderAcceptedOn, orderExpectedOn, reportStringBuilder.toString());
+	}
 }
