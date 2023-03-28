@@ -90,6 +90,7 @@ public class OrderServiceImpl implements OrderService {
                         }
                         sb.append("Delivery price: 199.99M");
 
+                        Date accepted = new Date();
                         return new AcceptedOrderDetails(result3, new Date(), deliveryTime, sb.toString());
                     }
                     else
