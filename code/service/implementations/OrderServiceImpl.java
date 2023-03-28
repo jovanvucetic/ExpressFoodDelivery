@@ -17,19 +17,12 @@ import core.models.*;
 
 public class OrderServiceImpl implements OrderService {
 
-	private final double DEFAULT_DELIVERY_FEE = 199.99;
+	private static final double DEFAULT_DELIVERY_FEE = 199.99;
+	
 	private DeliveryRepository deliveryRepository;
 	private PaymentRepository paymentRepository;
 	private RestaurantRepository restaurantRepository;
 	private OrderRepository orderRepository;
-
-	private void authorizePaymentMethod(Order orderDetails, BigDecimal fullOrderPrice)
-			throws CardAuthorizationException {
-		if (!paymentRepository
-				.authoriseCreditCard(orderDetails.getPaymentDetails().toCreditCardPaymentDetails(fullOrderPrice))) {
-			throw new CardAuthorizationException();
-		}
-	}
 	
 	public OrderServiceImpl(DeliveryRepository deliveryRepository, PaymentRepository paymentRepository,
 			RestaurantRepository restaurantRepository, OrderRepository orderRepository) {
@@ -38,13 +31,7 @@ public class OrderServiceImpl implements OrderService {
 		this.restaurantRepository = restaurantRepository;
 		this.orderRepository = orderRepository;
 	}
-
-	private void validateOrderItems(OrderItem orderItem) throws InvalidOrderDetailsException {
-		if (orderItem == null || orderItem.getCount() <= 0) {
-			throw new InvalidOrderDetailsException("Order item count must be higher than 0");
-		}
-	}
-
+	
 	@Override
 	public AcceptedOrderDetails order(Order orderDetails) throws InvalidOrderDetailsException, CardAuthorizationException {
 		
@@ -133,6 +120,20 @@ public class OrderServiceImpl implements OrderService {
 		}
 	}
 
+	private void validateOrderItems(OrderItem orderItem) throws InvalidOrderDetailsException {
+		if (orderItem == null || orderItem.getCount() <= 0) {
+			throw new InvalidOrderDetailsException("Order item count must be higher than 0");
+		}
+	}
+	
+	private void authorizePaymentMethod(Order orderDetails, BigDecimal fullOrderPrice)
+			throws CardAuthorizationException {
+		if (!paymentRepository
+				.authoriseCreditCard(orderDetails.getPaymentDetails().toCreditCardPaymentDetails(fullOrderPrice))) {
+			throw new CardAuthorizationException();
+		}
+	}
+	
 	private boolean isPaymentMethodValid(Order orderDetails) {
 		return orderDetails.getPaymentDetails() != null
 				&& (orderDetails.getPaymentDetails().getPaymentType() != PaymentType.CREDIT_CARD
