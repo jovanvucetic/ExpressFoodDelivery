@@ -55,10 +55,7 @@ public class OrderServiceImpl implements OrderService {
 			throw new InvalidOrderDetailsException("Delivery details object cannot be null");
 		}
 
-		if (orderDetails.getPaymentDetails() == null
-				|| (orderDetails.getPaymentDetails().getPaymentType() == PaymentType.CREDIT_CARD
-						&& (orderDetails.getPaymentDetails().getCardNumber() == null
-								|| orderDetails.getPaymentDetails().getCardNumber().equals("")))) {
+		if (!isPaymentMethodValid(orderDetails)) {
 			throw new InvalidOrderDetailsException("Payment details are not valid");
 		}
 		
@@ -85,8 +82,7 @@ public class OrderServiceImpl implements OrderService {
 		}
 
 		AcceptedKitchenResponse kitchenResponse = restaurantRepository.createOrder(orderDetails);
-		AcceptedDeliveryResponse deliveryServiceResponse = deliveryRepository
-				.createDelivery(orderDetails.getDeliveryDetails());
+		AcceptedDeliveryResponse deliveryServiceResponse = deliveryRepository.createDelivery(orderDetails.getDeliveryDetails());
 
 		if (orderDetails.getPaymentDetails().getPaymentType() == PaymentType.CREDIT_CARD) {
 			paymentRepository
@@ -101,15 +97,24 @@ public class OrderServiceImpl implements OrderService {
 				Calendar.getInstance().getTimeInMillis() + (estimatedDeliveryTimeInMinutes * 60 * 1000));
 		// report string builder
 		var reportStringBuilder = new StringBuilder("Order summary: \n");
+		
 		for (var orderItem : orderDetails.getOrderItems()) {
 			var fullPrice = orderItem.getCount() * orderItem.getPrice().doubleValue();
 			var orderReportItem = orderItem.getCount() + " x, " + orderItem.getName() + " - " + fullPrice + " din\n";
 			reportStringBuilder.append(orderReportItem);
 		}
+		
 		reportStringBuilder.append("Delivery price: 199.99M");
 
 		Date orderAcceptedOn = new Date();
 		
 		return new AcceptedOrderDetails(orderId, orderAcceptedOn, orderExpectedOn, reportStringBuilder.toString());
+	}
+
+	private boolean isPaymentMethodValid(Order orderDetails) {
+		return orderDetails.getPaymentDetails() != null
+				&& (orderDetails.getPaymentDetails().getPaymentType() != PaymentType.CREDIT_CARD
+						|| (orderDetails.getPaymentDetails().getCardNumber() != null
+								&& !orderDetails.getPaymentDetails().getCardNumber().equals("")));
 	}
 }
