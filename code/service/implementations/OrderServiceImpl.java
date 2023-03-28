@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.UUID;
+import java.util.function.BinaryOperator;
 
 import core.exceptions.CardAuthorizationException;
 import core.exceptions.InvalidOrderDetailsException;
@@ -84,29 +85,32 @@ public class OrderServiceImpl implements OrderService {
 		// report string builder
 		var reportStringBuilder = new StringBuilder("Order summary: \n");
 		
-		for (var orderItem : orderDetails.getOrderItems()) {
-			var fullPrice = orderItem.getCount() * orderItem.getPrice().doubleValue();
-			var orderReportItem = orderItem.getCount() + " x, " + orderItem.getName() + " - " + fullPrice + " din\n";
-			reportStringBuilder.append(orderReportItem);
-		}
+		orderDetails.getOrderItems().stream().forEach(x -> generateOrderItemReport(reportStringBuilder, x));
 		
 		reportStringBuilder.append("Delivery price: " + DEFAULT_DELIVERY_FEE);
+		
 		return reportStringBuilder;
 	}
 
+	private void generateOrderItemReport(StringBuilder reportStringBuilder, OrderItem orderItem) {
+		var fullPrice = orderItem.getCount() * orderItem.getPrice().doubleValue();
+		var orderReportItem = orderItem.getCount() + " x, " + orderItem.getName() + " - " + fullPrice + " din\n";
+		reportStringBuilder.append(orderReportItem);
+	}
+
 	private BigDecimal calculateTotalOrderPrice(Order orderDetails) {
-		var fullOrderPrice = new BigDecimal(0);
-		for (OrderItem orderItem : orderDetails.getOrderItems()) {
-			BigDecimal orderItemPrice = orderItem.getPrice().multiply(new BigDecimal(orderItem.getCount()));
-
-			fullOrderPrice = fullOrderPrice.add(orderItemPrice);
-		}
-
-		// Adding delivery fee
-		fullOrderPrice = fullOrderPrice.add(new BigDecimal(DEFAULT_DELIVERY_FEE));
+		BigDecimal fullOrderPrice = orderDetails.getOrderItems().stream()
+				.map(x -> getOrderItemPrice(x))
+				.reduce(new BigDecimal(0), (a, b) -> a.add(b))
+				.add(new BigDecimal(DEFAULT_DELIVERY_FEE));
+				
 		return fullOrderPrice;
 	}
 
+	private BigDecimal getOrderItemPrice(OrderItem orderItem) {
+		return orderItem.getPrice().multiply(new BigDecimal(orderItem.getCount()));
+	}
+	
 	private void validateInputRequest(Order orderDetails) throws InvalidOrderDetailsException {
 		if (orderDetails == null) {
 			throw new InvalidOrderDetailsException("Order details object cannot be null");
