@@ -31,6 +31,7 @@ public class OrderServiceImpl implements OrderService {
 
 	@Override
 	public AcceptedOrderDetails order(Order arg1) throws InvalidOrderDetailsException, CardAuthorizationException {
+		//order details must not be null
 		if (arg1 != null)
         {
             if (arg1.getDeliveryDetails() != null)
@@ -47,6 +48,7 @@ public class OrderServiceImpl implements OrderService {
                             }
                         }
 
+                        //An order price
                         var temp = new BigDecimal(0);
                         for (OrderItem item : arg1.getOrderItems())
                         {
@@ -72,14 +74,15 @@ public class OrderServiceImpl implements OrderService {
                         if( arg1.getPaymentDetails().getPaymentType() == PaymentType.CREDIT_CARD ) {
                         	paymentRepository.executePayment(arg1.getPaymentDetails().toCreditCardPaymentDetails(temp));
                         }
+                        //id of inserted order
                         UUID result3 = orderRepository.createOrder(arg1);
                         
-                        Calendar date = Calendar.getInstance();
-                        long timeInSecs = date.getTimeInMillis();
+                        //estimated time until delivery is done in minutes
                         int numberOfMinutes = result1.getEstimatedPreparationTimeInMinutes() + result2.getEstimatedDeliveryTimeInMinutes();
                         
+                        //expected delivery time
+                        Date deliveryTime = new Date(Calendar.getInstance().getTimeInMillis() + (numberOfMinutes * 60 * 1000));
                         
-                        Date deliveryTime = new Date(timeInSecs + (numberOfMinutes * 60 * 1000));
                         //report string builder
                         var sb = new StringBuilder("Order summary: \n");
                         for (var item : arg1.getOrderItems())
@@ -90,8 +93,9 @@ public class OrderServiceImpl implements OrderService {
                         }
                         sb.append("Delivery price: 199.99M");
 
+                        // time when order is accepted
                         Date accepted = new Date();
-                        return new AcceptedOrderDetails(result3, new Date(), deliveryTime, sb.toString());
+                        return new AcceptedOrderDetails(result3, accepted, deliveryTime, sb.toString());
                     }
                     else
                     {
